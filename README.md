@@ -30,7 +30,7 @@ The R packages to install are :
 
 ### Files Descriptions <a name="files"></a>
 
- * Dataset 'lung' : 
+Dataset 'lung' : 
 -   inst: Institution code
 -   time: Survival time in days
 -   status: censoring status 1=censored, 2=dead

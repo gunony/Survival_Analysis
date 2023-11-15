@@ -1,6 +1,6 @@
 ---
-title: "Survival analysis with KM method"
-author: "gN"
+title: "Survival analysis"
+author: gN & SH
 date: "2023-10-25"
 output: html_document
 editor_options: 
@@ -8,8 +8,9 @@ editor_options:
     wrap: 72
 ---
 
-## step 1-Installation and loading
+## Installation and loading
 
+R packages used :
 -   'survival' =\> compute survival analyses
 -   'survminer' =\> summarize and visualize the results of survival
     analysis.
@@ -43,7 +44,7 @@ head(lung) # look at the dataset
 
 ```
 
-## Step 2-Compute survival curves per sex with survfit()
+## Step 1 - Compute survival curves per sex with survfit()
 
 The function survfit() is included in survival package. The Kaplan-Meier
 estimator is a non-parametric statistic used to estimate the survival
@@ -169,3 +170,65 @@ Explanation of the different components :
 -   the p-value corresponding to the Chisquare statistic.
 
 THE P-VALUE OF 0.001 INDICATES THAT THE TWO GROUPS DIFFER IN SURVIVAL.
+
+## Step 4 - Compute univariate Cox regression model
+
+In univariate Cox regression only one factor is considered (in the example sex).
+The function coming from survival package used for Cox method is : coxph().
+
+```{r}
+univ.cox <- coxph(Surv(time, status) ~ sex, data = lung)
+summary(univ.cox) # to show the report
+```
+Explanations of the indicators : 
+-   coef : this is the estimated coef Bêta form the Cox model.
+-   exp(coef) : it is the Hazard Ratio (HR).
+-   se(coef) : it is the std error of the coef Bêta.
+-   z : z-score = coef/se(coef)
+-   Pr(>|z|) : the p-value associated with the z-score.
+-   lower/upper : it is the confidence interval of the HR.
+-   Concordance : is a measure of the predictive accuracy (1=perfect prediction/0.5=random).
+
+
+Make the associated graph
+
+```{r}
+ggsurvplot(survfit(univ.cox,data=lung), 
+           surv.median.line = "hv",
+           break.time.by = 100,
+           palette = "blue", 
+           ggtheme = theme_minimal())
+```
+
+
+
+## Step 5 - Compute multivariate Cox regression model
+
+This time we will compute the Cox method with 3 factors ; age, sex and ph.ecog
+
+```{r}
+multi.cox <- coxph(Surv(time, status) ~ age + sex + ph.ecog, data =  lung)
+summary(multi.cox)
+```
+Remarks on the p-value :
+  Only the p-value of the covariates 'sex' and 'ph.ecog' are acceptable (below 0.05).
+  For the covariate 'age', the p-value is 0.23, too high.
+
+Remarks on the HR :
+  With a HR of 1.59, the 'ph.ecog' indicates a strong link with the increased risk of death. 
+  At the opposite the HR of 'Sex' covariate =0.58 shows a strong link with the decreased risk of death.
+  The covariate 'age' with a HR of 1.0 has no effect on the risk of death.
+  
+
+### Make the associated graph
+
+```{r}
+ggsurvplot(survfit(multi.cox,data=lung),
+           palette = "orange",
+           surv.median.line = "hv",
+           break.time.by = 100,
+           legend.labs = c("age + sex + ph.ecog"),
+           ggtheme = theme_minimal())
+```
+
+
