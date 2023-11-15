@@ -1,0 +1,171 @@
+---
+title: "Survival analysis with KM method"
+author: "gN"
+date: "2023-10-25"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+## step 1-Installation and loading
+
+-   'survival' =\> compute survival analyses
+-   'survminer' =\> summarize and visualize the results of survival
+    analysis.
+
+```{r}
+# install.packages(c("survival", "survminer"))
+library("survival")
+library("survminer")
+```
+
+The lung cancer dataset is available in the survival package. The
+dataset is composed of the following data :
+
+-   inst: Institution code
+-   time: Survival time in days
+-   status: censoring status 1=censored, 2=dead
+-   age: Age in years
+-   sex: Male=1 Female=2
+-   ph.ecog: ECOG performance score (from 0=active to 5=dead)
+-   ph.karno: Karnofsky performance score (from 0=dead to 100=normal)
+-   pat.karno: Karnofsky performance score as rated by patient
+-   meal.cal: Calories consumed at meals
+-   wt.loss: Weight loss in last six months
+
+Detail on ph. ecog and ph. karno :
+<https://ecog-acrin.org/resources/ecog-performance-status/>
+
+```{r}
+#data("lung") #load the dataset
+head(lung) # look at the dataset
+
+```
+
+## Step 2-Compute survival curves per sex with survfit()
+
+The function survfit() is included in survival package. The Kaplan-Meier
+estimator is a non-parametric statistic used to estimate the survival
+function from lifetime data.
+
+*S(t)* : the estimator of the survival function (the probability that
+life is longer than t).
+
+![](images/PictureKM.png){width="236"}
+
+with :
+
+*ti* : a time when at least one event happened,
+
+*di* : the number of events (e.g., deaths) that happened at time *ti*
+
+*ni* : the individuals known to have survived (have not yet had an event
+or been censored) up to time *ti*
+
+```{r}
+fit <- survfit(Surv(time, status) ~ sex, data = lung)  
+# to get the split by gender otherwise replace by 'Surv(time, status) ~ 1'
+print(fit)
+```
+
+### Access to the variables in the function survfit()
+
+```{r}
+str(fit)
+```
+
+The main arguments :
+
+-   n: total number of observations in each curve (M/F).
+-   time: the time points on the curve.
+-   n.risk: the number of observations at risk at time t.
+-   n.event: the number of events that occurred at time t.
+-   n.censor: the number of censored observations at time t.
+-   surv : estimate of survival at time t.
+-   std.err : std error of the cumulative hazard
+-   strata: counts nb of time points belong to each curve. Each curve is
+    also given a name.
+-   lower,upper: lower and upper confidence limit.
+
+For more information enter in the console : ?survfit.object()
+
+Remark on censored observations : An event of interest (death, relapse)
+may not be observed during the study time. It produces a censored
+observations (patient lost, ...).
+
+```{r}
+KMVariables <- data.frame(time = fit$time,
+                  n.risk = fit$n.risk,
+                  n.event = fit$n.event,
+                  n.censor = fit$n.censor,
+                  surv = fit$surv,
+                  upper = fit$upper,
+                  lower = fit$lower
+                  )
+KMVariables
+```
+
+### Make the graph of the function survfit()
+
+```{r}
+ggsurvplot(fit,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = "abs_pct",  # absolute number and percentage at risk.
+          risk.table.col = "strata", # Change risk table color by groups
+          xlab = "Time in days",   # customize X axis label.
+          break.time.by = 200,     # break X axis in time intervals by 200
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          legend.labs = c("Male", "Female"),    # change legend labels.
+          ncensor.plot = TRUE,      # plot the number of censored subjects at time t
+          palette = c("orange", "grey"))
+```
+
+Explanation : X-axis represents the time in days. Y-axis gives the
+probability of surviving. A vertical bar on the graph represents a
+censored event. The median survival (50%) is 270 days for men and 426
+days for women. Women seems surviving longer than men. It has to be
+confirm with Logrank Test.
+
+A p-value of 0.0013 shows an acceptable level of statistical
+significance.
+
+### The complete table of the survival curves
+
+To look in detail the data.
+
+```{r}
+summary(fit)
+```
+
+## Step 3 - Comparison of the two survival curves with logrank test
+
+Group 1 : Male
+
+Group 2 : Female
+
+Hypothesis :
+
+-   H0 : Group 1 = Group 2
+
+-   H1 : Group \<\> Group 2
+
+The LOGRANK TEST is the method used to the two survival curves. The
+function to use in R is survdiff()
+
+```{r}
+surv_diff <- survdiff(Surv(time, status) ~ sex, data = lung)
+surv_diff
+```
+
+Explanation of the different components :
+
+-   N : number of observations in each groups
+-   observed : weighted observed number of events.
+-   expected : weighted expected number of events.
+-   Chisq : chisquare statistic for a test of equality.
+-   the p-value corresponding to the Chisquare statistic.
+
+THE P-VALUE OF 0.001 INDICATES THAT THE TWO GROUPS DIFFER IN SURVIVAL.
