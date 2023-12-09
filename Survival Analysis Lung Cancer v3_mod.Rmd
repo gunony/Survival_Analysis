@@ -1,0 +1,250 @@
+---
+title: "Survival Analysis - Lung Cancer"
+author: "Guillaume Nony & Saïd Hamdi"
+date: "2023-11-25"
+output: pdf_document
+---
+
+## Step 1 - Installation packages and loading dataset
+
+R packages used :
+
+-   'survival' =\> compute survival analyses
+-   'survminer' =\> summarize and visualize the results of survival analysis.
+
+```{r}
+# install.packages(c("survival", "survminer"))
+library("survival", warn.conflicts = FALSE, quietly = TRUE)
+library("survminer", warn.conflicts = FALSE, quietly = TRUE)
+```
+
+We are going to work on the lung cancer dataset. This dataset is available in the 'survival' package. It is composed of the following data :
+
+-   inst: Institution code
+-   time: Survival time in days
+-   status: Censoring status 1=censored, 2=dead
+-   age: Age in years
+-   sex: Male=1 Female=2
+-   ph.ecog: ECOG performance score (from 0=active to 5=dead)
+-   ph.karno: Karnofsky performance score (from 0=dead to 100=normal)
+-   pat.karno: Karnofsky performance score as rated by patient
+-   meal.cal: Calories consumed at meals
+-   wt.loss: Weight loss on last six months
+
+For more detail on ph. ecog and ph. karno see : <https://ecog-acrin.org/resources/ecog-performance-status/>
+
+A short look at the first rows of the dataset :
+
+```{r}
+head(lung) # look at the dataset
+```
+An overview of the statistics can also be done to understand how the dataset covariates behave:
+```{r}
+summary(lung[,2:9])
+```
+
+## Step 2 - Compute survival curves per sex with survfit()
+
+In medical research, The Kaplan-Meier estimator (KM) is often used to measure the fraction of patients living for a certain amount of time after treatment. The KM estimator is computed with the function survfit() included in 'survival' package.
+
+```{r}
+fit <- survfit(Surv(time, status) ~ sex, data = lung)  
+print(fit)
+```
+
+Remark : We have 228 observations.
+
+The function survfit() gives access to a large number of variables as shown below.
+
+```{r}
+str(fit)
+```
+
+The main arguments used are :
+
+-   n: total number of observations in each curve (M/F).
+-   time: the time points on the curve.
+-   n.risk: the number of observations at risk at time t.
+-   n.event: the number of events that occurred at time t.
+-   n.censor: the number of censored observations at time t.
+-   surv : estimate of survival at time t.
+-   std.err : std error of the cumulative hazard
+-   strata: counts nb of time points belong to each curve.
+-   lower,upper: lower and upper confidence limit.
+
+Remark : An event of interest (death, relapse) may not be observed during the study time. It produces a censored observations (patient lost, ...).
+
+A short look at the major arguments of KM-estimator :
+
+```{r}
+KMVariables <- data.frame(time = fit$time,
+                  n.risk = fit$n.risk,
+                  n.event = fit$n.event,
+                  n.censor = fit$n.censor,
+                  surv = fit$surv,
+                  upper = fit$upper,
+                  lower = fit$lower
+                  )
+head(KMVariables)
+```
+
+We show the graph of KM estimator.
+
+```{r}
+ggsurvplot(fit,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = "abs_pct",  # absolute number and percentage at risk.
+          risk.table.col = "strata", # Change risk table color by groups
+          xlab = "Time in days",   # customize X axis label.
+          break.time.by = 200,     # break X axis in time intervals by 200
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          legend.labs = c("Male", "Female"),    # change legend labels.
+          ncensor.plot = TRUE,      # plot the number of censored subjects at time t
+          palette = c("orange", "grey"))
+```
+
+Explanations : X-axis represents the time in days. Y-axis gives the probability of surviving. A vertical bar on the graph represents a censored event.
+
+With the survfit function, the median survival (50%) is 270 days for men and 426 days for women. Women seem surviving longer than men. However this affirmation must be confirmed with a Logrank Test. Logrank Test will allow to confirm or not that the two distributions have the same distribution curve.
+
+With a p-value of 0.0013 the level of statistical significance is acceptable (below 0.05).
+
+## Step 3 - Comparison of the two survival curves with Logrank test
+
+The Logrank Test is the method used to compare the survival distributions of the two survival curves. The function to use in R is survdiff().
+
+-   Group 1 : Male
+-   Group 2 : Female
+
+Hypothesis :
+
+-   H0 : Group 1 = Group 2
+-   H1 : Group \<\> Group 2
+
+```{r}
+surv_diff <- survdiff(Surv(time, status) ~ sex, data = lung)
+surv_diff
+```
+
+Comments : a p-value of 0.001 reinforces confidence in the rejection of the null hypothesis and suggests that the differences observed between the two groups are very unlikely to be attributed to chance. The previous affirmation (step 2) concerning Women and Men surviving is confirmed.
+
+## Step 4 - Compute univariate Cox regression model
+
+The objective is to evaluate the effect of several factor on survival. In univariate Cox regression only one factor is considered (we keep sex). The computation is made with the function coxph().
+
+```{r}
+univ.cox <- coxph(Surv(time, status) ~ sex, data = lung)
+summary(univ.cox) # to show the report
+```
+
+Explanations of the indicators :
+
+-   coef : this is the estimated coef Bêta form the Cox model.
+-   exp(coef) : it is the Hazard Ratio (HR).
+-   se(coef) : it is the std error of the coef Bêta.
+-   z : z-score = coef/se(coef)
+-   Pr(\>\|z\|) : the p-value associated with the z-score.
+-   lower/upper : it is the confidence interval of the HR.
+-   Concordance : is a measure of the predictive accuracy (1=perfect prediction/0.5=random).
+
+Comments : An HR of 0.5880 suggests that, compared with the reference group, the female group associated with 0.58 has a reduced risk of events (e.g. death or disease progression).
+
+A significantly low p-value, such as 0.00149, suggests a high probability that the association between sex and risk of lung cancer is not due to "chance".
+
+Make the associated graph
+
+```{r}
+ggsurvplot(survfit(univ.cox,data=lung), 
+           surv.median.line = "hv",
+           break.time.by = 100,
+           legend.labs = c("Univariate"),
+           palette = "blue", 
+           ggtheme = theme_minimal())
+```
+
+## Step 5 - Compute multivariate Cox regression model
+
+We will compute the Cox method with all factors ; age, sex, ph.ecog, ph.karno, pat.karno, meal.cal, wt.loss and ph.ecog. We will see which factors are pertinent to keep.
+
+```{r}
+multi.cox1 <- coxph(Surv(time, status) ~ age + sex + ph.ecog + ph.karno + pat.karno + meal.cal + wt.loss, data =  lung)
+summary(multi.cox1)
+```
+
+Remarks : Only the p-value of the covariates 'sex', 'ph.ecog' and 'ph.karno' are acceptable because they are below 0.05. The p-values of the other covariates are above 0.05 and are excluded from the rest of the analysis.
+
+We launch a new calculation with these three covariates.
+
+```{r}
+multi.cox2 <- coxph(Surv(time, status) ~ sex + ph.ecog + ph.karno, data =  lung)
+summary(multi.cox2)
+```
+
+Comments : With a p-value above 0.05, the covariate "ph.karno" is no more relevant. A new computation with sex and ph.ecog is computed.
+
+```{r}
+multi.cox3 <- coxph(Surv(time, status) ~ sex + ph.ecog, data =  lung)
+summary(multi.cox3)
+```
+
+Comments : With a p-values lower than 0.05, the two covariates are relevant. The HR of 0.5752 of the covariate 'sex' shows a difference in the risk between men and women. Women have a lower death risk or lower progression of the cancer compared to men. This has already been shown with the survival curve in step 2. Concerning the 'ph.ecog' covariate, the HR of 1.6282 means an increase of the risk associated with a growth of the 'ph.ecog' indicator. An increase of 1 unit of the indicator 'ph.ecog', the risk associated increase of 62.82%
+
+## Step 6 - Validate the number of covariates with LRT and AIC
+
+We noticed some rows with NA values in the dataset which prevents the computation of the LRT and the AIC. These values will be excluded.
+
+### 6.1 Use of Likelihood Ratio Test (LRT)
+
+It is a statistical test used to compare the goodness-of-fit of two nested models based on their likelihood functions.
+
+We are going to compare the Cox Regression with 3 models :
+
+-   sc1 = 'sex'only
+-   sc2 = 'sex' + 'ph.ecog'
+-   sc3 = 'sex' + 'ph.ecog' + 'ph.karno'
+
+```{r}
+lung2 <- na.omit(lung)  # Remove any rows with missing values
+sc1 = coxph(Surv(time, status) ~ sex  , data =  lung2)
+sc2 = coxph(Surv(time, status) ~ sex + ph.ecog  , data =  lung2)
+sc3 = coxph(Surv(time, status) ~ sex + ph.ecog + ph.karno, data =  lung2)
+anova(sc1, sc2, sc3)
+```
+Comments: With a p-value of 0.00027, the second model, where we add ph.ecog improves the quality of the second model compare to the first one. However adding the 'ph.karno' does not improve the result of the model, as the p-value is 0.1016 (above 0.05).
+
+### 6.2 Use of the AIC model
+
+```{r}
+lung3 <- na.omit(lung)  # Remove any rows with missing values
+sc1 = coxph(Surv(time, status) ~ sex  , data =  lung3)
+sc2 = coxph(Surv(time, status) ~ sex + ph.ecog  , data =  lung3)
+sc3 = coxph(Surv(time, status) ~ sex + ph.ecog + ph.karno, data =  lung3)
+fifi <- list(sc1=sc1, sc2=sc2, sc3=sc3)
+sapply(fifi, AIC)
+```
+
+Comments : The drop in the indicator between the sc1 and sc2 models shows that the addition of ph.ecog improves the model. Neither does the addition of ph.karno bring any major improvement, since the indicator does not decrease significantly.
+
+## STEP 7 - PREDICTION
+
+We are going to predict and plot the survival curves at the age of 35, 55 and 85 for men only.
+```{r}
+cox_age <- coxph(Surv(time, status) ~ age + sex  , data =  lung)
+pred <- survfit(cox_age, newdata = data.frame(age=c(35,55,85), sex=c(1,1,1)))
+
+suppressWarnings(ggsurvplot(pred, data=lung,
+          pval = FALSE, conf.int = FALSE,
+          risk.table = FALSE,  # absolute number and percentage at risk.
+          risk.table.col = "strata", # Change risk table color by groups
+          xlab = "Time in days",   # customize X axis label.
+          break.time.by = 100,     # break X axis in time intervals by 200
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          legend.labs = c("35y", "55y", "85y"),    # change legend labels.
+          ncensor.plot = FALSE,      # plot the number of censored subjects at time t
+          palette = c("orange", "grey","cyan")))
+```
+Comments : the older patient (85 years) has less surviving times (around 200 days) than a younger one (35 years - around 360 days).
